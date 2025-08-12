@@ -1,0 +1,41 @@
+.dart_tool/
+.packages
+build/
+ios/Pods/
+ios/Frameworks/
+.DS_Store
+
+
+# Android 常见忽略项（避免提交本地构建/IDE/密钥等产物）
+# 参考：Android 项目通用 .gitignore
+# 构建与产物
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Gradle
+.gradle/
+local.properties
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+
+# Eclipse（少数场景仍可能出现）
+.classpath
+.project
+.settings/
+bin/
+gen/
+out/
+
+# 密钥与敏感文件
+*.jks
+*.keystore
+*.hprof
+google-services.json

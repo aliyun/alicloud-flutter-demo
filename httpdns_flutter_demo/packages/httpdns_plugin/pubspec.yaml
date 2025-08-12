@@ -1,0 +1,23 @@
+name: httpdns_plugin
+description: "HTTPDNS plugin providing native resolution via platform SDKs."
+version: 0.0.1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.example.httpdns_plugin
+        pluginClass: HttpdnsPlugin
+      ios:
+        pluginClass: HttpdnsPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+
