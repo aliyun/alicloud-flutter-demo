@@ -1,3 +1,7 @@
+.cursor/
+.claude/
+CLAUDE.md
+
 # Flutter/Dart
 .dart_tool/
 .flutter-plugins

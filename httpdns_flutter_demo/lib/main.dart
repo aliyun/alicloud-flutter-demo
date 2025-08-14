@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'dart:convert';
-import 'net/http11.dart';
-import 'net/http2.dart';
-import 'net/http_result.dart';
+import 'net/httpdns_http_client_adapter.dart';
 import 'package:httpdns_plugin/httpdns_plugin.dart';
 
 void main() {
@@ -40,10 +39,8 @@ class _MyHomePageState extends State<MyHomePage> {
   String _responseText = 'Response will appear here...';
   bool _isLoading = false;
 
-  // 可切换客户端
-  late final Http11Client _http11;
-  late final Http2Client _http2;
-  bool _useHttp2 = false;
+  // 仅保留 Dio 客户端
+  late final Dio _dio;
 
   bool _httpdnsReady = false;
   bool _httpdnsIniting = false;
@@ -61,6 +58,11 @@ class _MyHomePageState extends State<MyHomePage> {
       await HttpdnsPlugin.setPersistentCacheIPEnabled(true);
       await HttpdnsPlugin.setReuseExpiredIPEnabled(true);
       await HttpdnsPlugin.build();
+
+      // 先build再执行解析相关动作
+      final preResolveHosts = 'www.aliyun.com';
+      await HttpdnsPlugin.setPreResolveHosts([preResolveHosts], ipType: 'both');
+      debugPrint('[httpdns] pre-resolve scheduled for host=$preResolveHosts');
       _httpdnsReady = true;
     } catch (e) {
       debugPrint('[httpdns] init failed: $e');
@@ -73,12 +75,15 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     // 设置默认的API URL用于演示
-    _urlController.text = 'https://alidt.alicdn.com/alilog/configs/sdk/common.json';
+    _urlController.text = 'https://www.aliyun.com';
 
-    _http11 = Http11Client();
-    _http2 = Http2Client();
     // 仅首次进入页面时初始化 HTTPDNS
     _initHttpDnsOnce();
+
+    // 先初始化HTTPDNS再初始化Dio
+    _dio = Dio();
+    _dio.httpClientAdapter = buildHttpdnsHttpClientAdapter();
+    _dio.options.headers['Connection'] = 'keep-alive';
   }
 
   @override
@@ -104,10 +109,23 @@ class _MyHomePageState extends State<MyHomePage> {
     final uri = Uri.parse(_urlController.text);
 
     try {
-      debugPrint('[connection] Sending request to ${uri.host}:${uri.port} using ${_useHttp2 ? 'HTTP/2' : 'HTTP/1.1'} client');
-      final HttpResponseInfo res = _useHttp2
-          ? await _http2.get(uri)
-          : await _http11.get(uri);
+      debugPrint('[connection] Sending request to ${uri.host}:${uri.port} using HTTP/1.1 client');
+      final response = await _dio.getUri(uri,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: true,
+            validateStatus: (_) => true,
+          ));
+
+      final headers = <String, String>{
+        for (final e in response.headers.map.entries) e.key: e.value.join(',')
+      };
+      final Map<String, dynamic> res = {
+        'uri': uri.toString(),
+        'statusCode': response.statusCode ?? 0,
+        'headers': headers,
+        'body': response.data is String ? response.data as String : jsonEncode(response.data),
+      };
 
       setState(() {
         _isLoading = false;
@@ -115,63 +133,35 @@ class _MyHomePageState extends State<MyHomePage> {
         // 构建响应信息字符串
         final StringBuffer responseInfo = StringBuffer();
 
-        // 连接信息
-        responseInfo.writeln('=== CONNECTION ===');
-        responseInfo.writeln('scheme: ${uri.scheme.toUpperCase()}');
-        responseInfo.writeln('target: ${uri.host}:${uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80)}');
-        if (res.remoteIp != null && res.remotePort != null) {
-          responseInfo.writeln('remote: ${res.remoteIp}:${res.remotePort}');
-        }
-        if (res.usedProxy && res.proxyHost != null && res.proxyPort != null) {
-          responseInfo.writeln('proxy: ${res.proxyHost}:${res.proxyPort}');
-        }
-        if (res.alpnProtocol != null && res.alpnProtocol!.isNotEmpty) {
-          responseInfo.writeln('ALPN: ${res.alpnProtocol}');
-        }
+        // 仅显示基本信息：URI / 状态码 / 响应头 / 响应体
+        responseInfo.writeln('=== REQUEST ===');
+        responseInfo.writeln('uri: ${res['uri']}');
         responseInfo.writeln();
 
-        // 添加状态行
-        responseInfo.writeln('=== RESPONSE STATUS ===');
-        // 尝试从响应头检测HTTP版本，否则不显示版本信息
-        String protocolVersion = '';
-        final headersMap = res.normalizedHeaders;
-        if (headersMap.containsKey('version')) {
-          protocolVersion = 'HTTP/${headersMap['version']} ';
-        } else if (headersMap.containsKey(':version')) {
-          protocolVersion = 'HTTP/${headersMap[':version']} ';
-        }
-        final int code = res.statusCode;
-        final String msg = (res.statusMessage != null && res.statusMessage!.trim().isNotEmpty)
-            ? res.statusMessage!.trim()
-            : '';
-        if (msg.isNotEmpty) {
-          responseInfo.writeln('$protocolVersion$code $msg');
-        } else {
-          responseInfo.writeln('$protocolVersion$code');
-        }
+        responseInfo.writeln('=== STATUS ===');
+        final int code = (res['statusCode'] as int?) ?? 0;
+        responseInfo.writeln('statusCode: $code');
         responseInfo.writeln();
 
-        // 添加响应头
-        responseInfo.writeln('=== RESPONSE HEADERS ===');
-        headersMap.forEach((key, value) {
+        responseInfo.writeln('=== HEADERS ===');
+        final Map<String, dynamic> headersMapDyn = (res['headers'] as Map?)?.cast<String, dynamic>() ?? {};
+        headersMapDyn.forEach((key, value) {
           responseInfo.writeln('$key: $value');
         });
         responseInfo.writeln();
 
-        // 添加响应体
-        responseInfo.writeln('=== RESPONSE BODY ===');
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          // 尝试格式化JSON响应以便更好地显示
+        responseInfo.writeln('=== BODY ===');
+        final String bodyStr = (res['body'] as String?) ?? '';
+        if (code >= 200 && code < 300) {
           try {
-            final jsonData = json.decode(res.body);
+            final jsonData = json.decode(bodyStr);
             const encoder = JsonEncoder.withIndent('  ');
             responseInfo.write(encoder.convert(jsonData));
-          } catch (e) {
-            // 如果不是JSON，直接显示原始响应
-            responseInfo.write(res.body);
+          } catch (_) {
+            responseInfo.write(bodyStr);
           }
         } else {
-          responseInfo.write(res.body);
+          responseInfo.write(bodyStr);
         }
 
         _responseText = responseInfo.toString();
@@ -253,7 +243,7 @@ class _MyHomePageState extends State<MyHomePage> {
               controller: _urlController,
               decoration: const InputDecoration(
                 labelText: 'Enter URL',
-                hintText: 'https://api.example.com/data',
+                hintText: 'https://www.aliyun.com',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.link),
               ),
@@ -289,17 +279,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 16),
 
-            // 切换 HTTP/1.1 与 HTTP/2 客户端
-            Row(
-              children: [
-                Switch(
-                  value: _useHttp2,
-                  onChanged: (v) => setState(() => _useHttp2 = v),
-                ),
-                const SizedBox(width: 8),
-                Text(_useHttp2 ? 'HTTP/2 client' : 'HTTP/1.1 client'),
-              ],
-            ),
+            // 保留空白分隔
             const SizedBox(height: 16),
 
             // 响应文本显示区域

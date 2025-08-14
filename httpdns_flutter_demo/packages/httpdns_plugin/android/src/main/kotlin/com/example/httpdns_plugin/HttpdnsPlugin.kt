@@ -3,7 +3,7 @@ package com.example.httpdns_plugin
 import android.content.Context
 import android.util.Log
 import androidx.annotation.NonNull
-import com.alibaba.sdk.android.httpdns.CacheTtlChanger
+
 import com.alibaba.sdk.android.httpdns.HttpDns
 import com.alibaba.sdk.android.httpdns.HttpDnsService
 import com.alibaba.sdk.android.httpdns.InitConfig
@@ -13,9 +13,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
+
 
 class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var channel: MethodChannel
@@ -28,7 +26,6 @@ class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
     private var aesSecretKey: String? = null
 
     // Desired states collected before build()
-    private var desiredTtlDelegateEnabled: Boolean = false
     private var desiredPersistentCacheEnabled: Boolean? = null
     private var desiredDiscardExpiredAfterSeconds: Int? = null
     private var desiredReuseExpiredIPEnabled: Boolean? = null
@@ -36,50 +33,9 @@ class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
     private var desiredHttpsEnabled: Boolean? = null
     private var desiredPreResolveAfterNetworkChanged: Boolean? = null
 
-    // Toggle from Dart to enable TTL delegate bridge
-    @Volatile
-    private var ttlDelegateEnabled: Boolean = false
 
-    private val ttlChanger = CacheTtlChanger { host, type, ttl ->
-        if (!ttlDelegateEnabled) return@CacheTtlChanger ttl
-        val args = hashMapOf(
-            "host" to host,
-            "ipType" to (type?.name ?: "auto"),
-            "ttl" to ttl
-        )
-        val out = AtomicInteger(ttl)
-        val latch = CountDownLatch(1)
-        try {
-            channel.invokeMethod("ttl#compute", args, object : Result {
-                override fun success(value: Any?) {
-                    try {
-                        val v = when (value) {
-                            is Int -> value
-                            is Number -> value.toInt()
-                            is String -> value.toIntOrNull() ?: ttl
-                            else -> ttl
-                        }
-                        out.set(v)
-                    } catch (_: Throwable) { /* ignore */ }
-                    latch.countDown()
-                }
 
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    latch.countDown()
-                }
 
-                override fun notImplemented() {
-                    latch.countDown()
-                }
-            })
-            // Avoid blocking too long to prevent impacting network path
-            latch.await(300, TimeUnit.MILLISECONDS)
-        } catch (t: Throwable) {
-            // log in English per rule
-            Log.w("HttpdnsPlugin", "ttl delegate failed: ${t.message}")
-        }
-        out.get()
-    }
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         appContext = flutterPluginBinding.applicationContext
@@ -126,14 +82,7 @@ class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
                 result.success(true)
             }
 
-            // Dart: setTtlDelegateEnabled(enabled) — only save desired state
-            "setTtlDelegateEnabled" -> {
-                val enabled = call.argument<Boolean>("enabled") == true
-                desiredTtlDelegateEnabled = enabled
-                ttlDelegateEnabled = enabled
-                Log.d("HttpdnsPlugin", "ttl delegate desired=$desiredTtlDelegateEnabled")
-                result.success(null)
-            }
+
 
             // Dart: setLogEnabled(enabled) — save desired, still no-op at build-time on Android SDK
             "setLogEnabled" -> {
@@ -223,9 +172,7 @@ class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
                 }
                 try {
                     val builder = InitConfig.Builder()
-                    if (desiredTtlDelegateEnabled) {
-                        builder.configCacheTtlChanger(ttlChanger)
-                    }
+
                     // Optional builder params
                     try { builder.javaClass.getMethod("setContext", Context::class.java).invoke(builder, ctx) } catch (_: Throwable) {}
                     try {
@@ -318,6 +265,13 @@ class HttpdnsPlugin : FlutterPlugin, MethodCallHandler {
                     val r = svc?.getHttpDnsResultForHostSyncNonBlocking(hostname, type)
                     val v4 = r?.ips?.toList() ?: emptyList()
                     val v6 = r?.ipv6s?.toList() ?: emptyList()
+                    // 记录解析结果，便于排查：包含 host、请求类型以及返回的 IPv4/IPv6 列表
+                    Log.d(
+                        "HttpdnsPlugin",
+                        "resolve result host=" + hostname + ", type=" + type +
+                            ", ipv4=" + v4.joinToString(prefix = "[", postfix = "]") +
+                            ", ipv6=" + v6.joinToString(prefix = "[", postfix = "]")
+                    )
                     result.success(mapOf("ipv4" to v4, "ipv6" to v6))
                 } catch (t: Throwable) {
                     Log.e("HttpdnsPlugin", "resolveHostSyncNonBlocking failed: ${t.message}")

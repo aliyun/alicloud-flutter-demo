@@ -9,7 +9,7 @@ public class HttpdnsPlugin: NSObject, FlutterPlugin {
   private var desiredAccountId: Int?
   private var desiredSecretKey: String?
   private var desiredAesSecretKey: String?
-  private var desiredTtlDelegateEnabled: Bool = false
+
   private var desiredPersistentCacheEnabled: Bool?
   private var desiredDiscardExpiredAfterSeconds: Int?
   private var desiredReuseExpiredIPEnabled: Bool?
@@ -17,33 +17,7 @@ public class HttpdnsPlugin: NSObject, FlutterPlugin {
   private var desiredHttpsEnabled: Bool?
   private var desiredPreResolveAfterNetworkChanged: Bool?
 
-  // TTL delegate bridge -> calls back to Dart to compute ttl
-  private class TTLDelegateBridge: NSObject, HttpdnsTTLDelegate {
-    weak var channel: FlutterMethodChannel?
-    init(channel: FlutterMethodChannel) { self.channel = channel }
-    func httpdnsHost(_ host: String, ipType: AlicloudHttpDNS_IPType, ttl: Int64) -> Int64 {
-      let args: [String: Any] = [
-        "host": host,
-        "ipType": "\(ipType)",
-        "ttl": ttl
-      ]
-      var out = ttl
-      let sem = DispatchSemaphore(value: 1)
-      _ = sem.wait(timeout: .now()) // consume initial permit
-      channel?.invokeMethod("ttl#compute", arguments: args, result: { value in
-        defer { sem.signal() }
-        if let v = value as? Int64 { out = v; return }
-        if let v = value as? Int { out = Int64(v); return }
-        if let v = value as? NSNumber { out = v.int64Value; return }
-        if let s = value as? String, let v = Int64(s) { out = v; return }
-      })
-      // Wait up to 300ms
-      _ = sem.wait(timeout: .now() + 0.3)
-      return out
-    }
-  }
 
-  private var ttlDelegateBridge: TTLDelegateBridge?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "httpdns_plugin", binaryMessenger: registrar.messenger())
@@ -72,13 +46,7 @@ public class HttpdnsPlugin: NSObject, FlutterPlugin {
       NSLog("HttpdnsPlugin: initialize saved accountId=\(accountId)")
       result(true)
 
-    // Dart: setTtlDelegateEnabled(enabled) — only save desired
-    case "setTtlDelegateEnabled":
-      let args = call.arguments as? [String: Any]
-      let enabled = (args?["enabled"] as? Bool) ?? false
-      desiredTtlDelegateEnabled = enabled
-      NSLog("HttpdnsPlugin: ttl delegate desired=\(enabled)")
-      result(nil)
+
 
     // Dart: setLogEnabled(enabled) — save desired
     case "setLogEnabled":
@@ -123,8 +91,17 @@ public class HttpdnsPlugin: NSObject, FlutterPlugin {
     case "setPreResolveHosts":
       let args = call.arguments as? [String: Any]
       let hosts = (args?["hosts"] as? [String]) ?? []
-      // ipType hint can be mapped via query type if you want to split; here we keep default SDK behavior (both)
-      HttpDnsService.sharedInstance().setPreResolveHosts(hosts)
+      let ipTypeStr = (args?["ipType"] as? String) ?? "auto"
+      switch ipTypeStr.lowercased() {
+      case "ipv4", "v4":
+        HttpDnsService.sharedInstance().setPreResolveHosts(hosts, queryIPType: AlicloudHttpDNS_IPType.init(0))
+      case "ipv6", "v6":
+        HttpDnsService.sharedInstance().setPreResolveHosts(hosts, queryIPType: AlicloudHttpDNS_IPType.init(1))
+      case "both", "64":
+        HttpDnsService.sharedInstance().setPreResolveHosts(hosts, queryIPType: AlicloudHttpDNS_IPType.init(2))
+      default:
+        HttpDnsService.sharedInstance().setPreResolveHosts(hosts)
+      }
       result(nil)
 
     case "getSessionId":
@@ -169,12 +146,7 @@ public class HttpdnsPlugin: NSObject, FlutterPlugin {
       if let enable = desiredHttpsEnabled {
         svc.setHTTPSRequestEnabled(enable)
       }
-      if desiredTtlDelegateEnabled {
-        if ttlDelegateBridge == nil, let ch = channel { ttlDelegateBridge = TTLDelegateBridge(channel: ch) }
-        svc.ttlDelegate = ttlDelegateBridge
-      } else {
-        svc.ttlDelegate = nil
-      }
+
       if let en = desiredPreResolveAfterNetworkChanged {
         svc.setPreResolveAfterNetworkChanged(en)
       }
