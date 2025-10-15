@@ -5,7 +5,7 @@ HTTPDNS Flutter DEMO
 
 Flutter是Google开源的应用开发框架，仅通过一套代码库，就能构建精美的、原生平台编译的多平台应用。
 
-本示例提供了一个本地Flutter HTTPDNS插件实现，展示如何在Flutter应用中常用的dio框架集成使用HTTPDNS。
+本示例提供了一个本地Flutter HTTPDNS插件实现，展示如何在Flutter应用中常用的网络框架集成使用HTTPDNS。
 
 以下是插件的使用说明和最佳实践。
 
@@ -65,8 +65,9 @@ dependencies:
     sdk: flutter
   httpdns_plugin:
     path: packages/httpdns_plugin
-  dio: ^5.9.0  # 用于HTTP请求
-  http2: ^2.3.1  # 可选，支持HTTP/2
+  dio: ^5.9.0      # Dio网络库
+  http: ^1.2.0     # http包
+  http2: ^2.3.1    # 可选，支持 HTTP/2
 ```
 
 
@@ -240,15 +241,18 @@ Future<void> _resolve() async {
 
 自定义适配器的实现请参考 `lib/net/httpdns_http_client_adapter.dart` 文件。本方案由EMAS团队设计实现，参考请注明出处。
 适配器内部会拦截HTTP请求，调用HTTPDNS进行域名解析，并使用解析后的IP创建socket连接。
-代码如下：
+
+本示例支持三种网络库：Dio、HttpClient、http包。代码如下：
 
 ```dart
 import 'dart:io';
 import 'package:dio/io.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:httpdns_plugin/httpdns_plugin.dart';
 
-// 构建带 HTTPDNS 能力的 IOHttpClientAdapter
+// Dio 适配器
 IOHttpClientAdapter buildHttpdnsHttpClientAdapter() {
   final HttpClient client = HttpClient();
   _configureHttpClient(client);
@@ -257,6 +261,20 @@ IOHttpClientAdapter buildHttpdnsHttpClientAdapter() {
   final IOHttpClientAdapter adapter = IOHttpClientAdapter(createHttpClient: () => client)
     ..validateCertificate = (cert, host, port) => true;
   return adapter;
+}
+
+// 原生 HttpClient
+HttpClient buildHttpdnsNativeHttpClient() {
+  final HttpClient client = HttpClient();
+  _configureHttpClient(client);
+  _configureConnectionFactory(client);
+  return client;
+}
+
+// http 包适配器
+http.Client buildHttpdnsHttpPackageClient() {
+  final HttpClient httpClient = buildHttpdnsNativeHttpClient();
+  return IOClient(httpClient);
 }
 
 // HttpClient 基础配置
@@ -340,11 +358,13 @@ Future<List<InternetAddress>> _resolveTargets(String domain) async {
 #### 4.2.2 适配器集成和使用 
 
 适配器的集成请参考 `lib/main.dart` 文件。
-首先需要初始化HTTPDNS，然后配置Dio使用自定义适配器，示例代码如下：
+首先需要初始化HTTPDNS，然后配置网络库使用自定义适配器，示例代码如下：
 
 ```dart
 class _MyHomePageState extends State<MyHomePage> {
   late final Dio _dio;
+  late final HttpClient _httpClient;
+  late final http.Client _httpPackageClient;
 
   @override
   void initState() {
@@ -353,10 +373,13 @@ class _MyHomePageState extends State<MyHomePage> {
     // 初始化 HTTPDNS
     _initHttpDnsOnce();
     
-    // 配置 Dio 使用自定义适配器
+    // 配置网络库使用 HTTPDNS 适配器
     _dio = Dio();
     _dio.httpClientAdapter = buildHttpdnsHttpClientAdapter();
     _dio.options.headers['Connection'] = 'keep-alive';
+    
+    _httpClient = buildHttpdnsNativeHttpClient();
+    _httpPackageClient = buildHttpdnsHttpPackageClient();
   }
 
   Future<void> _initHttpDnsOnce() async {
@@ -382,28 +405,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
 
 
-使用配置好的Dio客户端发起请求时，会自动使用HTTPDNS进行域名解析：
+使用配置好的网络库发起请求时，会自动使用HTTPDNS进行域名解析：
 
 ```dart
-Future<void> _sendHttpRequest() async {
-  final uri = Uri.parse('https://www.aliyun.com');
-  
-  try {
-    final response = await _dio.getUri(uri,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: true,
-          validateStatus: (_) => true,
-        ));
-    
-    print('Response: ${response.data}');
-  } catch (e) {
-    print('Request failed: $e');
-  }
-}
+// 使用 Dio
+final response = await _dio.get('https://www.aliyun.com');
+
+// 使用 HttpClient
+final request = await _httpClient.getUrl(Uri.parse('https://www.aliyun.com'));
+final response = await request.close();
+
+// 使用 http 包
+final response = await _httpPackageClient.get(Uri.parse('https://www.aliyun.com'));
 ```
-
-
 
 #### 4.2.3 资源清理 
 
@@ -413,7 +427,8 @@ Future<void> _sendHttpRequest() async {
 @override
 void dispose() {
   _urlController.dispose();
-  // Dio客户端会自动管理连接池，通常不需要手动关闭
+  _httpClient.close();
+  _httpPackageClient.close();
   super.dispose();
 }
 ```
