@@ -21,6 +21,13 @@ IOHttpClientAdapter buildHttpdnsHttpClientAdapter() {
   return adapter;
 }
 
+HttpClient buildHttpdnsNativeHttpClient() {
+  final HttpClient client = HttpClient();
+  _configureHttpClient(client);
+  _configureConnectionFactory(client);
+  return client;
+}
+
 // HttpClient 基础配置
 void _configureHttpClient(HttpClient client) {
   client.findProxy = (Uri _) => 'DIRECT';
@@ -64,10 +71,10 @@ void _configureConnectionFactory(HttpClient client) {
     return ConnectionTask.fromSocket(
       upgraded,
       () {
-        cancelled = true;
-        try {
-          rawStart.then((t) => t.cancel());
-        } catch (_) {}
+      cancelled = true;
+      try {
+        rawStart.then((t) => t.cancel());
+      } catch (_) {}
       },
     );
   };
