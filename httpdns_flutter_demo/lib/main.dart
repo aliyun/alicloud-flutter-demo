@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'net/httpdns_http_client_adapter.dart';
 import 'package:httpdns_plugin/httpdns_plugin.dart';
 
@@ -37,7 +38,8 @@ class MyHomePage extends StatefulWidget {
 
 enum NetworkLibrary {
   dio('Dio'),
-  httpClient('HttpClient');
+  httpClient('HttpClient'),
+  httpPackage('http');
 
   const NetworkLibrary(this.displayName);
   final String displayName;
@@ -48,9 +50,9 @@ class _MyHomePageState extends State<MyHomePage> {
   String _responseText = 'Response will appear here...';
   bool _isLoading = false;
 
-  // 仅保留 Dio 客户端
   late final Dio _dio;
   late final HttpClient _httpClient;
+  late final http.Client _httpPackageClient;
 
   NetworkLibrary _selectedLibrary = NetworkLibrary.dio;
 
@@ -98,27 +100,18 @@ class _MyHomePageState extends State<MyHomePage> {
     _dio.options.headers['Connection'] = 'keep-alive';
 
     _httpClient = buildHttpdnsNativeHttpClient();
+    _httpPackageClient = buildHttpdnsHttpPackageClient();
   }
 
   @override
   void dispose() {
     _urlController.dispose();
     _httpClient.close();
+    _httpPackageClient.close();
     super.dispose();
   }
 
   Future<void> _sendHttpRequest() async {
-    switch (_selectedLibrary) {
-      case NetworkLibrary.dio:
-        await _sendRequestWithDio();
-        break;
-      case NetworkLibrary.httpClient:
-        await _sendRequestWithHttpClient();
-        break;
-    }
-  }
-
-  Future<void> _sendRequestWithDio() async {
     if (_urlController.text.isEmpty) {
       setState(() {
         _responseText = 'Error: Please enter a URL';
@@ -134,117 +127,63 @@ class _MyHomePageState extends State<MyHomePage> {
     final uri = Uri.parse(_urlController.text);
 
     try {
-      debugPrint('[Dio] Sending request to ${uri.host}:${uri.port}');
-      final response = await _dio.getUri(
-        uri,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: true,
-          validateStatus: (_) => true,
-        ),
-      );
+      final String libraryName = _selectedLibrary.displayName;
+      debugPrint('[$libraryName] Sending request to ${uri.host}:${uri.port}');
 
-      final headers = <String, String>{
-        for (final e in response.headers.map.entries) e.key: e.value.join(',')
-      };
-      final Map<String, dynamic> res = {
-        'uri': uri.toString(),
-        'statusCode': response.statusCode ?? 0,
-        'headers': headers,
-        'body': response.data is String ? response.data as String : jsonEncode(response.data),
-      };
+      int statusCode;
+      Map<String, String> headers;
+      String body;
+
+      switch (_selectedLibrary) {
+        case NetworkLibrary.dio:
+          final response = await _dio.getUri(
+            uri,
+            options: Options(
+              responseType: ResponseType.plain,
+              followRedirects: true,
+              validateStatus: (_) => true,
+            ),
+          );
+          statusCode = response.statusCode ?? 0;
+          headers = {
+            for (final e in response.headers.map.entries)
+              e.key: e.value.join(','),
+          };
+          body = response.data is String
+              ? response.data as String
+              : jsonEncode(response.data);
+          break;
+
+        case NetworkLibrary.httpClient:
+          final request = await _httpClient.getUrl(uri);
+          final response = await request.close();
+          statusCode = response.statusCode;
+          headers = {};
+          response.headers.forEach((name, values) {
+            headers[name] = values.join(',');
+          });
+          body = await response.transform(utf8.decoder).join();
+          break;
+
+        case NetworkLibrary.httpPackage:
+          final response = await _httpPackageClient.get(uri);
+          statusCode = response.statusCode;
+          headers = response.headers;
+          body = response.body;
+          break;
+      }
 
       setState(() {
         _isLoading = false;
 
-        // 构建响应信息字符串
         final StringBuffer responseInfo = StringBuffer();
 
-        // 仅显示基本信息：URI / 状态码 / 响应头 / 响应体
-        responseInfo.writeln('=== REQUEST (Dio) ===');
-        responseInfo.writeln('uri: ${res['uri']}');
-        responseInfo.writeln();
-
-        responseInfo.writeln('=== STATUS ===');
-        final int code = (res['statusCode'] as int?) ?? 0;
-        responseInfo.writeln('statusCode: $code');
-        responseInfo.writeln();
-
-        responseInfo.writeln('=== HEADERS ===');
-        final Map<String, dynamic> headersMapDyn = (res['headers'] as Map?)?.cast<String, dynamic>() ?? {};
-        headersMapDyn.forEach((key, value) {
-          responseInfo.writeln('$key: $value');
-        });
-        responseInfo.writeln();
-
-        responseInfo.writeln('=== BODY ===');
-        final String bodyStr = (res['body'] as String?) ?? '';
-        if (code >= 200 && code < 300) {
-          try {
-            final jsonData = json.decode(bodyStr);
-            const encoder = JsonEncoder.withIndent('  ');
-            responseInfo.write(encoder.convert(jsonData));
-          } catch (_) {
-            responseInfo.write(bodyStr);
-          }
-        } else {
-          responseInfo.write(bodyStr);
-        }
-
-        _responseText = responseInfo.toString();
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _responseText = 'Network Error: $e';
-      });
-    } finally {
-      // 关闭自定义客户端，避免连接泄漏
-      // 不关闭全局客户端，以便保持连接并复用
-    }
-  }
-
-  // 使用原生 HttpClient 发送请求
-  Future<void> _sendRequestWithHttpClient() async {
-    if (_urlController.text.isEmpty) {
-      setState(() {
-        _responseText = 'Error: Please enter a URL';
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _responseText = 'Sending request...';
-    });
-
-    final uri = Uri.parse(_urlController.text);
-
-    try {
-      debugPrint('[HttpClient] Sending request to ${uri.host}:${uri.port}');
-
-      final request = await _httpClient.getUrl(uri);
-      final response = await request.close();
-
-      final headers = <String, String>{};
-      response.headers.forEach((name, values) {
-        headers[name] = values.join(',');
-      });
-
-      final responseBody = await response.transform(utf8.decoder).join();
-
-      setState(() {
-        _isLoading = false;
-
-        // 构建响应信息字符串
-        final StringBuffer responseInfo = StringBuffer();
-
-        responseInfo.writeln('=== REQUEST (HttpClient) ===');
+        responseInfo.writeln('=== REQUEST ($libraryName) ===');
         responseInfo.writeln('uri: ${uri.toString()}');
         responseInfo.writeln();
 
         responseInfo.writeln('=== STATUS ===');
-        responseInfo.writeln('statusCode: ${response.statusCode}');
+        responseInfo.writeln('statusCode: $statusCode');
         responseInfo.writeln();
 
         responseInfo.writeln('=== HEADERS ===');
@@ -254,16 +193,16 @@ class _MyHomePageState extends State<MyHomePage> {
         responseInfo.writeln();
 
         responseInfo.writeln('=== BODY ===');
-        if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (statusCode >= 200 && statusCode < 300) {
           try {
-            final jsonData = json.decode(responseBody);
+            final jsonData = json.decode(body);
             const encoder = JsonEncoder.withIndent('  ');
             responseInfo.write(encoder.convert(jsonData));
           } catch (_) {
-            responseInfo.write(responseBody);
+            responseInfo.write(body);
           }
         } else {
-          responseInfo.write(responseBody);
+          responseInfo.write(body);
         }
 
         _responseText = responseInfo.toString();
@@ -304,7 +243,10 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       // 确保只初始化一次
       await _initHttpDnsOnce();
-      final res = await HttpdnsPlugin.resolveHostSyncNonBlocking(uri.host, ipType: 'both');
+      final res = await HttpdnsPlugin.resolveHostSyncNonBlocking(
+        uri.host,
+        ipType: 'both',
+      );
       setState(() {
         _isLoading = false;
         final buf = StringBuffer();

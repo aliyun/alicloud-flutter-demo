@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:httpdns_plugin/httpdns_plugin.dart';
 
 /* *
@@ -26,6 +28,11 @@ HttpClient buildHttpdnsNativeHttpClient() {
   _configureHttpClient(client);
   _configureConnectionFactory(client);
   return client;
+}
+
+http.Client buildHttpdnsHttpPackageClient() {
+  final HttpClient httpClient = buildHttpdnsNativeHttpClient();
+  return IOClient(httpClient);
 }
 
 // HttpClient 基础配置

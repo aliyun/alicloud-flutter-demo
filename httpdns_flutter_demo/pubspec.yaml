@@ -37,6 +37,7 @@ dependencies:
   httpdns_plugin:
     path: packages/httpdns_plugin
   dio: ^5.9.0
+  http: ^1.2.0
   http2: ^2.3.1
 
 dev_dependencies:
