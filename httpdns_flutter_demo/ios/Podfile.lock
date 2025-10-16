@@ -1,28 +1,28 @@
 PODS:
   - AlicloudHTTPDNS (3.2.1)
-  - Flutter (1.0.0)
-  - httpdns_plugin (0.0.1):
+  - aliyun_httpdns (1.0.0):
     - AlicloudHTTPDNS (= 3.2.1)
     - Flutter
+  - Flutter (1.0.0)
 
 DEPENDENCIES:
+  - aliyun_httpdns (from `.symlinks/plugins/aliyun_httpdns/ios`)
   - Flutter (from `Flutter`)
-  - httpdns_plugin (from `.symlinks/plugins/httpdns_plugin/ios`)
 
 SPEC REPOS:
   https://github.com/aliyun/aliyun-specs.git:
     - AlicloudHTTPDNS
 
 EXTERNAL SOURCES:
+  aliyun_httpdns:
+    :path: ".symlinks/plugins/aliyun_httpdns/ios"
   Flutter:
     :path: Flutter
-  httpdns_plugin:
-    :path: ".symlinks/plugins/httpdns_plugin/ios"
 
 SPEC CHECKSUMS:
   AlicloudHTTPDNS: 7c3ea698dad0070cf3ea7d1e6cc1a3650f5de437
+  aliyun_httpdns: c267d59d846b3434d12f79579dcfc88cab58bf48
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  httpdns_plugin: d9e21a6398c40f436e5dff7ee7915b0e7ffe67af
 
 PODFILE CHECKSUM: de0e890c0774b321ae9ce974535140263d5c1ce9
 

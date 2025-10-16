@@ -4,10 +4,9 @@ packages:
   aliyun_httpdns:
     dependency: "direct main"
     description:
-      name: aliyun_httpdns
-      sha256: "138f19c1863c4b5333ac8060a335084691e5f7128f3b5cb5aa7f8e03f8c2bdf5"
-      url: "https://pub.dev"
-    source: hosted
+      path: ".."
+      relative: true
+    source: path
     version: "1.0.0"
   async:
     dependency: transitive
@@ -289,5 +288,5 @@ packages:
     source: hosted
     version: "1.1.1"
 sdks:
-  dart: ">=3.8.1 <4.0.0"
+  dart: ">=3.7.0-0 <4.0.0"
   flutter: ">=3.18.0-18.0.pre.54"

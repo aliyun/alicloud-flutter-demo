@@ -1,0 +1,39 @@
+gradle-wrapper.jar
+/.gradle
+/captures/
+/gradlew
+/gradlew.bat
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# Remember to never publicly share your keystore.
+# See https://flutter.dev/to/reference-keystore
+key.properties
+**/*.keystore
+**/*.jks
+
+# Android 常见忽略项（与 packages/httpdns_plugin/.gitignore 同步）
+# 构建与产物
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+.externalNativeBuild/
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+
+# Eclipse（可能遗留的工程类型）
+.classpath
+.project
+.settings/
+bin/
+gen/
+out/
+
+# 调试与敏感文件
+*.hprof
+google-services.json
