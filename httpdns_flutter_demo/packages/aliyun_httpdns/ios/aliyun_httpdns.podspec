@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'aliyun_httpdns'
-  s.version          = '1.0.1'
+  s.version          = '1.0.2'
   s.summary          = 'aliyun httpdns flutter plugin'
   s.description      = <<-DESC
 aliyun httpdns flutter plugin.
@@ -16,7 +16,7 @@ DESC
   s.public_header_files = 'Classes/**/*.h'
   s.static_framework = true
   s.dependency 'Flutter'
-  s.dependency 'AlicloudHTTPDNS', '3.3.0'
+  s.dependency 'AlicloudHTTPDNS', '3.4.0'
   s.platform = :ios, '10.0'
 
   # Flutter.framework does not contain a i386 slice.

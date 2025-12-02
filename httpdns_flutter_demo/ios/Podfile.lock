@@ -1,7 +1,7 @@
 PODS:
-  - AlicloudHTTPDNS (3.3.0)
-  - aliyun_httpdns (1.0.0):
-    - AlicloudHTTPDNS (= 3.3.0)
+  - AlicloudHTTPDNS (3.4.0)
+  - aliyun_httpdns (1.0.2):
+    - AlicloudHTTPDNS (= 3.4.0)
     - Flutter
   - Flutter (1.0.0)
 
@@ -20,8 +20,8 @@ EXTERNAL SOURCES:
     :path: Flutter
 
 SPEC CHECKSUMS:
-  AlicloudHTTPDNS: 20cc7a0ea8a2ac0056eee7638834f796a8e80b65
-  aliyun_httpdns: 98a629bf0234c5365664086524b0f7cc31333c18
+  AlicloudHTTPDNS: bf08cd49a2b9e37f7c4f5b43eb26f7b1a83a34d8
+  aliyun_httpdns: 71b17ac81cd1e538c3e56f3951dc1d7b236bd561
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
 
 PODFILE CHECKSUM: de0e890c0774b321ae9ce974535140263d5c1ce9

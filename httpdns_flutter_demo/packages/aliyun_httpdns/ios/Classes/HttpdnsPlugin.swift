@@ -1,6 +1,6 @@
 import Flutter
 import UIKit
-import AlicloudHttpDNS
+import AlicloudHTTPDNS
 
 public class AliyunHttpDnsPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel!

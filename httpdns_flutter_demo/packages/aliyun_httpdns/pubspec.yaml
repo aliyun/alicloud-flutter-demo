@@ -1,6 +1,6 @@
 name: aliyun_httpdns
 description: "Aliyun HTTPDNS Flutter plugin."
-version: 1.0.1
+version: 1.0.2
 homepage: https://help.aliyun.com/document_detail/2584339.html
 
 environment:
